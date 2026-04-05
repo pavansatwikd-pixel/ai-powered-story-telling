@@ -1,0 +1,129 @@
+{
+  "entities": {
+    "Story": {
+      "title": "Story",
+      "description": "A story project created by a user.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "genre": { "type": "string" },
+        "progress": { "type": "number" },
+        "wordCount": { "type": "number" },
+        "isShared": { "type": "boolean" },
+        "collaborators": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "authorName": { "type": "string" },
+        "authorId": { "type": "string" },
+        "versions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "content": { "type": "string" },
+              "timestamp": { "type": "number" }
+            }
+          }
+        },
+        "chapters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" },
+              "content": { "type": "string" }
+            }
+          }
+        },
+        "updatedAt": { "type": "number" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["title", "authorId", "createdAt", "updatedAt"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile information.",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "bio": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["email", "createdAt"]
+    },
+    "StoryNode": {
+      "title": "StoryNode",
+      "description": "A node in the StoryBranch canvas.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "type": { "type": "string" },
+        "parentId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["title", "x", "y", "type", "authorId", "createdAt"]
+    },
+    "Character": {
+      "title": "Character",
+      "description": "A character in a story.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "description": { "type": "string" },
+        "quirk": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "authorId": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["name", "authorId", "createdAt"]
+    },
+    "Invitation": {
+      "title": "Invitation",
+      "description": "A collaborator invitation for a story.",
+      "type": "object",
+      "properties": {
+        "storyId": { "type": "string" },
+        "storyTitle": { "type": "string" },
+        "inviterEmail": { "type": "string" },
+        "inviterName": { "type": "string" },
+        "inviteeEmail": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "declined"] },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["storyId", "inviterEmail", "inviteeEmail", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/stories/{storyId}": {
+      "schema": { "$ref": "#/entities/Story" },
+      "description": "Stories created by users."
+    },
+    "/stories/{storyId}/nodes/{nodeId}": {
+      "schema": { "$ref": "#/entities/StoryNode" },
+      "description": "Nodes for the StoryBranch canvas."
+    },
+    "/stories/{storyId}/characters/{characterId}": {
+      "schema": { "$ref": "#/entities/Character" },
+      "description": "Characters in a story."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles."
+    },
+    "/invitations/{invitationId}": {
+      "schema": { "$ref": "#/entities/Invitation" },
+      "description": "Collaborator invitations."
+    }
+  }
+}

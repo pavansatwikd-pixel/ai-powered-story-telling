@@ -1,0 +1,217 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - displayName: string (optional)
+    //   - email: string (required)
+    //   - photoURL: string (optional)
+    //   - bio: string (optional)
+    //   - createdAt: number (required, immutable)
+    //
+    // Collection: stories
+    // Document ID: {storyId}
+    // Fields:
+    //   - title: string (required)
+    //   - content: string (optional)
+    //   - genre: string (optional)
+    //   - progress: number (optional)
+    //   - wordCount: number (optional)
+    //   - isShared: boolean (optional)
+    //   - collaborators: list (optional)
+    //   - authorName: string (optional)
+    //   - authorId: string (required, immutable)
+    //   - versions: list (optional)
+    //   - chapters: list (optional)
+    //   - updatedAt: number (required)
+    //   - createdAt: number (required, immutable)
+    //
+    // Collection: stories/{storyId}/nodes
+    // Document ID: {nodeId}
+    // Fields:
+    //   - title: string (required)
+    //   - content: string (optional)
+    //   - x: number (required)
+    //   - y: number (required)
+    //   - type: string (required)
+    //   - parentId: string (optional)
+    //   - authorId: string (required, immutable)
+    //   - authorName: string (optional)
+    //   - createdAt: number (required, immutable)
+    //
+    // Collection: stories/{storyId}/characters
+    // Document ID: {characterId}
+    // Fields:
+    //   - name: string (required)
+    //   - role: string (optional)
+    //   - description: string (optional)
+    //   - imageUrl: string (optional)
+    //   - authorId: string (required, immutable)
+    //   - createdAt: number (required, immutable)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.authorId;
+    }
+
+    function isCollaborator() {
+      return isAuthenticated() && ('collaborators' in resource.data) && (request.auth.uid in resource.data.collaborators);
+    }
+    
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+    
+    function isValidUser(data) {
+      return data.email is string &&
+             data.createdAt is number &&
+             (!('displayName' in data) || data.displayName is string) &&
+             (!('photoURL' in data) || data.photoURL is string) &&
+             (!('bio' in data) || data.bio is string);
+    }
+    
+    function isValidStory(data) {
+      return data.title is string && data.title.size() <= 200 &&
+             data.authorId is string &&
+             data.createdAt is number &&
+             data.updatedAt is number &&
+             (!('content' in data) || data.content is string) &&
+             (!('genre' in data) || data.genre is string && data.genre.size() <= 50) &&
+             (!('progress' in data) || data.progress is number && data.progress >= 0 && data.progress <= 100) &&
+             (!('wordCount' in data) || data.wordCount is number && data.wordCount >= 0) &&
+             (!('isShared' in data) || data.isShared is bool) &&
+             (!('collaborators' in data) || data.collaborators is list) &&
+             (!('authorName' in data) || data.authorName is string && data.authorName.size() <= 100) &&
+             (!('versions' in data) || data.versions is list) &&
+             (!('chapters' in data) || data.chapters is list);
+    }
+
+    function isValidStoryNode(data) {
+      return data.title is string && data.title.size() <= 200 &&
+             data.x is number &&
+             data.y is number &&
+             data.type is string &&
+             data.authorId is string &&
+             data.createdAt is number &&
+             (!('content' in data) || data.content is string) &&
+             (!('parentId' in data) || data.parentId is string) &&
+             (!('authorName' in data) || data.authorName is string);
+    }
+
+    function isValidCharacter(data) {
+      return data.name is string && data.name.size() <= 100 &&
+             data.authorId is string &&
+             data.createdAt is number &&
+             (!('role' in data) || data.role is string && data.role.size() <= 50) &&
+             (!('description' in data) || data.description is string) &&
+             (!('quirk' in data) || data.quirk is string && data.quirk.size() <= 200) &&
+             (!('imageUrl' in data) || data.imageUrl is string);
+    }
+
+    function isValidInvitation(data) {
+      return data.storyId is string &&
+             data.storyTitle is string &&
+             data.inviterEmail is string &&
+             data.inviterName is string &&
+             data.inviteeEmail is string &&
+             data.status in ['pending', 'accepted', 'declined'] &&
+             data.createdAt is number;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && hasRequiredFields(['email', 'createdAt']) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    match /invitations/{invitationId} {
+      allow read: if isAuthenticated() && (request.auth.token.email == resource.data.inviteeEmail || request.auth.token.email == resource.data.inviterEmail);
+      allow create: if isAuthenticated() && request.resource.data.inviterEmail == request.auth.token.email && isValidInvitation(request.resource.data);
+      allow update: if isAuthenticated() && (request.auth.token.email == resource.data.inviteeEmail || request.auth.token.email == resource.data.inviterEmail) && isValidInvitation(request.resource.data);
+      allow delete: if isAuthenticated() && (request.auth.token.email == resource.data.inviteeEmail || request.auth.token.email == resource.data.inviterEmail);
+    }
+
+    match /stories/{storyId} {
+      allow read: if isDocOwner() || isCollaborator() || (resource.data.isShared == true && isAuthenticated());
+      allow create: if isAuthenticated() && 
+                    request.resource.data.authorId == request.auth.uid && 
+                    hasRequiredFields(['title', 'authorId', 'createdAt', 'updatedAt']) && 
+                    isValidStory(request.resource.data);
+      allow update: if (isDocOwner() || isCollaborator()) && 
+                    request.resource.data.authorId == resource.data.authorId &&
+                    request.resource.data.createdAt == resource.data.createdAt &&
+                    isValidStory(request.resource.data);
+      allow delete: if isDocOwner();
+
+      match /nodes/{nodeId} {
+        allow read: if isAuthenticated() && (
+          get(/databases/$(database)/documents/stories/$(storyId)).data.authorId == request.auth.uid ||
+          ('collaborators' in get(/databases/$(database)/documents/stories/$(storyId)).data && request.auth.uid in get(/databases/$(database)/documents/stories/$(storyId)).data.collaborators) ||
+          ('isShared' in get(/databases/$(database)/documents/stories/$(storyId)).data && get(/databases/$(database)/documents/stories/$(storyId)).data.isShared == true)
+        );
+        allow create: if isAuthenticated() && (
+          get(/databases/$(database)/documents/stories/$(storyId)).data.authorId == request.auth.uid ||
+          ('collaborators' in get(/databases/$(database)/documents/stories/$(storyId)).data && request.auth.uid in get(/databases/$(database)/documents/stories/$(storyId)).data.collaborators)
+        ) && request.resource.data.authorId == request.auth.uid &&
+        hasRequiredFields(['title', 'x', 'y', 'type', 'authorId', 'createdAt']) &&
+        isValidStoryNode(request.resource.data);
+        allow update: if isAuthenticated() && (
+          get(/databases/$(database)/documents/stories/$(storyId)).data.authorId == request.auth.uid ||
+          ('collaborators' in get(/databases/$(database)/documents/stories/$(storyId)).data && request.auth.uid in get(/databases/$(database)/documents/stories/$(storyId)).data.collaborators)
+        ) && request.resource.data.authorId == resource.data.authorId &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        isValidStoryNode(request.resource.data);
+        allow delete: if isAuthenticated() && (
+          get(/databases/$(database)/documents/stories/$(storyId)).data.authorId == request.auth.uid ||
+          ('collaborators' in get(/databases/$(database)/documents/stories/$(storyId)).data && request.auth.uid in get(/databases/$(database)/documents/stories/$(storyId)).data.collaborators)
+        );
+      }
+
+      match /characters/{characterId} {
+        allow read: if isAuthenticated() && (
+          get(/databases/$(database)/documents/stories/$(storyId)).data.authorId == request.auth.uid ||
+          ('collaborators' in get(/databases/$(database)/documents/stories/$(storyId)).data && request.auth.uid in get(/databases/$(database)/documents/stories/$(storyId)).data.collaborators) ||
+          ('isShared' in get(/databases/$(database)/documents/stories/$(storyId)).data && get(/databases/$(database)/documents/stories/$(storyId)).data.isShared == true)
+        );
+        allow create: if isAuthenticated() && (
+          get(/databases/$(database)/documents/stories/$(storyId)).data.authorId == request.auth.uid ||
+          ('collaborators' in get(/databases/$(database)/documents/stories/$(storyId)).data && request.auth.uid in get(/databases/$(database)/documents/stories/$(storyId)).data.collaborators)
+        ) && request.resource.data.authorId == request.auth.uid &&
+        hasRequiredFields(['name', 'authorId', 'createdAt']) &&
+        isValidCharacter(request.resource.data);
+        allow update: if isAuthenticated() && (
+          get(/databases/$(database)/documents/stories/$(storyId)).data.authorId == request.auth.uid ||
+          ('collaborators' in get(/databases/$(database)/documents/stories/$(storyId)).data && request.auth.uid in get(/databases/$(database)/documents/stories/$(storyId)).data.collaborators)
+        ) && request.resource.data.authorId == resource.data.authorId &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        isValidCharacter(request.resource.data);
+        allow delete: if isAuthenticated() && (
+          get(/databases/$(database)/documents/stories/$(storyId)).data.authorId == request.auth.uid ||
+          ('collaborators' in get(/databases/$(database)/documents/stories/$(storyId)).data && request.auth.uid in get(/databases/$(database)/documents/stories/$(storyId)).data.collaborators)
+        );
+      }
+    }
+  }
+}
